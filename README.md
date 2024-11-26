@@ -254,25 +254,7 @@ Tested Distributions:
 - RHEL and derivatives (RHEL, CentOS, Rocky Linux, AlmaLinux, Fedora)
 - Debian and derivatives (Debian, Ubuntu)
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit pull requests. Areas of particular interest:
-- Additional distribution support
-- Enhanced testing coverage
-- Performance improvements
-- Documentation improvements
-
 ## License
 
 MIT License
 
-## Author
-
-Diego Lasa
-
----
-
-For more detailed information about individual components:
-- [Lua Documentation](https://www.lua.org/docs.html)
-- [Lmod Documentation](https://lmod.readthedocs.io/)
-- [EasyBuild Documentation](https://docs.easybuild.io/)
