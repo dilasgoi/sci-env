@@ -8,9 +8,16 @@ Designed for HPC environments, research computing, and scientific workstations w
 
 ## Components
 
-- **Lua**: A lightweight scripting language (required by Lmod)
-- **Lmod**: A modern environment module system that manages software versions and dependencies
-- **EasyBuild**: A powerful software build and installation framework for HPC systems
+- **[Lua](https://www.lua.org/)**: A lightweight, high-level scripting language designed for embedded use, configuration, and rapid prototyping. Known for its simplicity, efficiency, and excellent documentation. In this toolkit, it serves as the foundation for Lmod's module system implementation.
+
+- **[Lmod](https://lmod.readthedocs.io/)**: A modern replacement for environment modules that handles the dynamic modification of a user's environment. It provides a sophisticated solution for managing multiple software versions and dependencies in HPC environments. Lmod uses Lua for its implementation, offering features like module caching, hierarchical dependencies, and support for module properties.
+
+- **[EasyBuild](https://easybuild.io/)**: An extensive software build and installation framework specifically designed for High Performance Computing (HPC) systems. It provides a consistent, reproducible approach to installing scientific software. EasyBuild includes thousands of ready-to-use build recipes (easyconfigs) for popular scientific software, handles dependencies automatically, and integrates seamlessly with environment modules.
+
+These components work together to create a comprehensive scientific computing environment:
+1. Lua provides the scripting foundation
+2. Lmod manages the environment and software modules
+3. EasyBuild automates the building and installation of scientific software
 
 ## Requirements
 
