@@ -48,7 +48,7 @@ For most users, the default installation in your home directory is recommended:
 git clone https://github.com/dilasgoi/sci-env.git
 cd sci-env
 
-# Run installation
+# Run installation with default versions
 ./scripts/install.sh
 
 # Activate your new environment
@@ -61,16 +61,24 @@ module avail
 
 ### Advanced Installation Options
 
-Install in a custom location:
+Install with specific versions or custom locations:
 ```bash
-# Install in a shared location
+# Install in a custom location
 ./scripts/install.sh -p /opt/scicomp
 
 # Install with specific versions
-./scripts/install.sh --lua-version 5.1.4.9 --lmod-version 8.7.53
+./scripts/install.sh --lua-version 5.1.4.9 --lmod-version 8.7.59
 
-# Get help on all options
+# See all available options
 ./scripts/install.sh --help
+```
+
+Available options:
+```
+-h, --help              Show help message
+-p, --prefix PATH       Installation prefix (default: $HOME/scicomp)
+--lua-version VERSION   Lua version (default: 5.1.4.9)
+--lmod-version VERSION  Lmod version (default: 8.7.59)
 ```
 
 ### Using Your New Environment
@@ -160,12 +168,15 @@ These verify:
 - EasyBuild operations
 - Cross-distribution compatibility
 
-### Running Tests
+### Running Tests with Custom Versions
 
+Tests can be run with specific versions:
 ```bash
-# Run both test suites
-./tests/test_components.sh
-./tests/test_installation.sh
+# Test with specific versions
+TEST_LUA_VERSION=5.1.4.9 TEST_LMOD_VERSION=8.7.59 ./tests/test_components.sh
+
+# Run integration tests with same versions
+TEST_LUA_VERSION=5.1.4.9 TEST_LMOD_VERSION=8.7.59 ./tests/test_installation.sh
 
 # Run with debug output
 bash -x ./tests/test_components.sh
@@ -245,16 +256,17 @@ fi
 
 ## Component Details
 
-Current stable versions:
-- Lua: 5.1.4.9 (tested and stable version for Lmod)
-- Lmod: 8.7.53 (includes hierarchical module features)
+Default stable versions (configurable via command line):
+- Lua: 5.1.4.9 
+- Lmod: 8.7.59 
 - EasyBuild: Latest stable version (automatically selected)
 
 Tested Distributions:
 - RHEL and derivatives (RHEL, CentOS, Rocky Linux, AlmaLinux, Fedora)
 - Debian and derivatives (Debian, Ubuntu)
 
+Note: All versions can be overridden during installation using the `--lua-version` and `--lmod-version` flags.
+
 ## License
 
 MIT License
-

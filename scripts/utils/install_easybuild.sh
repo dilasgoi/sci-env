@@ -4,6 +4,8 @@ install_easybuild() {
     local install_prefix=$1
     local src_dir=$2
     local build_dir=$3
+    local lua_version=$4
+    local lmod_version=$5
 
     # Step 1: Create a temporary virtualenv for EasyBuild
     log "Creating temporary EasyBuild environment..."
@@ -50,21 +52,21 @@ export EASYBUILD_BUILDPATH=${install_prefix}/build
     export LMOD_CONFIG_DIR="${LMOD_CONFIG_DIR:-}"
     export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
     
-    # Setup Lua and Lmod environment
-    export PATH="${install_prefix}/software/Lua/5.1.4.9/bin:$PATH"
-    export LD_LIBRARY_PATH="${install_prefix}/software/Lua/5.1.4.9/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    # Setup Lua and Lmod environment (using variables instead of hardcoded values)
+    export PATH="${install_prefix}/software/Lua/${lua_version}/bin:$PATH"
+    export LD_LIBRARY_PATH="${install_prefix}/software/Lua/${lua_version}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     
     # Setup Lmod
-    export LMOD_DIR="${install_prefix}/software/Lmod/8.7.53/lmod/lmod/libexec"
+    export LMOD_DIR="${install_prefix}/software/Lmod/${lmod_version}/lmod/lmod/libexec"
     export LMOD_CMD="${LMOD_DIR}/lmod"
-    export MODULESHOME="${install_prefix}/software/Lmod/8.7.53/lmod/lmod"
+    export MODULESHOME="${install_prefix}/software/Lmod/${lmod_version}/lmod/lmod"
     export MODULEPATH="${install_prefix}/modules/all"
-    export MODULEPATH_ROOT="${install_prefix}/software/Lmod/8.7.53/lmod/lmod/modulefiles"
+    export MODULEPATH_ROOT="${install_prefix}/software/Lmod/${lmod_version}/lmod/lmod/modulefiles"
     export BASH_ENV="/dev/null"
     
     # Source Lmod
     log "Sourcing Lmod..."
-    source "${install_prefix}/software/Lmod/8.7.53/lmod/lmod/init/profile"
+    source "${install_prefix}/software/Lmod/${lmod_version}/lmod/lmod/init/profile"
     check_status "Sourcing Lmod"
 
     # Verify module command is available

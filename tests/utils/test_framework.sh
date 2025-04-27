@@ -20,8 +20,8 @@ source "${UTILS_DIR}/install_easybuild.sh"
 
 # Test Environment Setup
 TEST_PREFIX="/tmp/scicomp_test"
-TEST_LUA_VERSION="5.1.4.9"
-TEST_LMOD_VERSION="8.7.53"
+TEST_LUA_VERSION="${TEST_LUA_VERSION:-5.1.4.9}"      # Can be overridden by env var
+TEST_LMOD_VERSION="${TEST_LMOD_VERSION:-8.7.53}"     # Can be overridden by env var
 
 # Helper function to setup module environment
 setup_module_env() {
@@ -127,9 +127,9 @@ test_easybuild_component() {
     # Ensure Lmod is properly initialized
     source "${TEST_PREFIX}/software/Lmod/${TEST_LMOD_VERSION}/lmod/lmod/init/profile"
     
-    # First test: Installation
+    # First test: Installation (pass versions)
     run_test "EasyBuild Installation" "
-        install_easybuild ${TEST_PREFIX} ${TEST_PREFIX}/src ${TEST_PREFIX}/build &&
+        install_easybuild ${TEST_PREFIX} ${TEST_PREFIX}/src ${TEST_PREFIX}/build ${TEST_LUA_VERSION} ${TEST_LMOD_VERSION} &&
         [ -d ${TEST_PREFIX}/modules/all/EasyBuild ] &&
         module --ignore_cache spider EasyBuild && 
         module --ignore_cache load EasyBuild &&
@@ -155,8 +155,8 @@ test_complete_installation() {
     log "Testing complete installation sequence..."
     
     run_test "Complete Installation" "
-        # Run installation
-        ${PROJECT_ROOT}/scripts/install.sh -p ${TEST_PREFIX} &&
+        # Run installation with specified versions
+        ${PROJECT_ROOT}/scripts/install.sh -p ${TEST_PREFIX} --lua-version ${TEST_LUA_VERSION} --lmod-version ${TEST_LMOD_VERSION} &&
         [ -d ${TEST_PREFIX}/software ] &&
         [ -d ${TEST_PREFIX}/modules/all ] &&
         

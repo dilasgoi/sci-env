@@ -11,7 +11,7 @@
 #
 # Components installed:
 #   - Lua 5.1.4.9 (Required for Lmod)
-#   - Lmod 8.7.53 (Module System)
+#   - Lmod 8.7.59 (Module System)
 #   - EasyBuild (Latest version via bootstrap)
 #
 # Author: Diego Lasa
@@ -33,7 +33,7 @@ source "${SCRIPT_DIR}/utils/install_easybuild.sh"
 # Default Configuration
 #==============================================================================
 LUA_VERSION="5.1.4.9"
-LMOD_VERSION="8.7.53"
+LMOD_VERSION="8.7.59"
 
 #==============================================================================
 # Parse Command Line Arguments
@@ -84,14 +84,14 @@ done
 # Install system dependencies
 install_system_dependencies
 
-# Install Lua
+# Install Lua (pass the version explicitly)
 install_lua "$LUA_VERSION" "$SRC_DIR" "$SOFTWARE_DIR"
 
-# Install and configure Lmod
+# Install and configure Lmod (pass the version explicitly)
 install_lmod "$LMOD_VERSION" "$SRC_DIR" "$SOFTWARE_DIR" "$INSTALL_PREFIX"
 
-# Install and configure EasyBuild
-install_easybuild "$INSTALL_PREFIX" "$SRC_DIR" "$BUILD_DIR"
+# Install and configure EasyBuild (pass both versions)
+install_easybuild "$INSTALL_PREFIX" "$SRC_DIR" "$BUILD_DIR" "$LUA_VERSION" "$LMOD_VERSION"
 
 # Clean up temporary files
 cleanup
