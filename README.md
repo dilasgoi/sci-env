@@ -1,10 +1,11 @@
 # sci-env
 
-A minimalist toolkit that automates the installation of scientific computing environments on Linux systems. 
-Sets up Lua, Lmod (module system), and EasyBuild (software build framework) in a single user space, 
-without root privileges after initial dependencies. Supports both RHEL/Fedora and Debian/Ubuntu derivatives, 
-includes comprehensive testing, and requires no configuration files. 
-Designed for HPC environments, research computing, and scientific workstations where reproducible software stacks are essential.
+A minimalist toolkit that automates the installation of scientific computing environments on Linux systems.
+Sets up Lua, Lmod (module system), archspec (CPU detection), and EasyBuild (software build framework) into
+an arch-aware layout, and generates a runtime loader (`init.sh`) that detects each host's CPU at login and
+points EasyBuild at the right per-architecture slot. Supports both RHEL/Fedora and Debian/Ubuntu derivatives.
+Designed for HPC clusters with NFS-shared software trees (one install, many nodes with different CPUs) and
+for single-host scientific workstations.
 
 ## Components
 
@@ -12,12 +13,15 @@ Designed for HPC environments, research computing, and scientific workstations w
 
 - **[Lmod](https://lmod.readthedocs.io/)**: A modern replacement for environment modules that handles the dynamic modification of a user's environment. It provides a sophisticated solution for managing multiple software versions and dependencies in HPC environments. Lmod uses Lua for its implementation, offering features like module caching, hierarchical dependencies, and support for module properties.
 
+- **[archspec](https://github.com/archspec/archspec)**: A library that classifies the host CPU into a named microarchitecture (e.g. `icelake`, `cascadelake`, `skylake_avx512`) and exposes its ancestor chain. The runtime loader uses it to pick the correct per-architecture slot at login. A built-in heuristic in the loader patches archspec's blind spot for Intel Sierra Forest (Xeon 6 E-core, e.g. 6740E), which archspec <= 0.2.6 misreads as `skylake`.
+
 - **[EasyBuild](https://easybuild.io/)**: An extensive software build and installation framework specifically designed for High Performance Computing (HPC) systems. It provides a consistent, reproducible approach to installing scientific software. EasyBuild includes thousands of ready-to-use build recipes (easyconfigs) for popular scientific software, handles dependencies automatically, and integrates seamlessly with environment modules.
 
 These components work together to create a comprehensive scientific computing environment:
 1. Lua provides the scripting foundation
 2. Lmod manages the environment and software modules
-3. EasyBuild automates the building and installation of scientific software
+3. archspec classifies the running host so each node picks ISA-appropriate binaries
+4. EasyBuild automates the building and installation of scientific software
 
 ## Requirements
 
@@ -39,41 +43,53 @@ sudo apt-get update && sudo apt-get install -y tcl-dev tk-dev python3-wheel pyth
 
 ## Installation & Usage
 
-### Basic Setup
+The installer detects whether the chosen prefix is inside `$HOME` or outside, and configures the deployment accordingly. Same install pipeline, two deploy modes.
 
-For most users, the default installation in your home directory is recommended:
+### Per-user install (single host, `$HOME` prefix)
 
 ```bash
-# Clone the repository
 git clone https://github.com/dilasgoi/sci-env.git
 cd sci-env
+./scripts/install.sh                # default prefix: $HOME/scicomp
+source ~/.bashrc                    # installer wires init.sh into ~/.bashrc
 
-# Run installation with default versions
-./scripts/install.sh
-
-# Activate your new environment
-source ~/.bashrc
-
-# Verify installation
-module --version
 module avail
+module load EasyBuild
+eb --version
 ```
 
-### Advanced Installation Options
+### System-wide install (NFS-shared cluster, prefix outside `$HOME`)
 
-Install with specific versions or custom locations:
 ```bash
-# Install in a custom location
-./scripts/install.sh -p /opt/scicomp
+# On a node with write access to the shared prefix (e.g. hera-01):
+sudo ./scripts/install.sh -p /scicomp
 
-# Install with specific versions
-./scripts/install.sh --lua-version 5.1.4.9 --lmod-version 8.7.59
-
-# See all available options
-./scripts/install.sh --help
+# Then on every node that mounts /scicomp:
+sudo install -m 0644 /scicomp/init.sh /etc/profile.d/scicomp.sh
 ```
 
-Available options:
+At each login on each node, `init.sh`:
+
+- Detects the host CPU via archspec (with a built-in fallback for Sierra Forest).
+- Auto-creates `${prefix}/builds/<os>/<ver>/<arch>/{software,modules/all,build}/` if missing.
+- Composes `MODULEPATH` as: host arch slot → compatible ancestor slots that exist → common slot.
+- Exports `EASYBUILD_INSTALLPATH`/`EASYBUILD_BUILDPATH`/etc. pointing at the host's arch slot, so `eb` writes into the right place.
+
+The loader only handles routing. Compiler optimization flags (`-march`/`-mtune`) stay EasyBuild's responsibility. Override per build with `eb --optarch=...` if you need to.
+
+### Optional per-host CPU override
+
+When archspec misdetects a CPU AND the built-in Sierra Forest heuristic doesn't catch it, force a target on that specific node:
+
+```bash
+sudo install -d /etc/scicomp
+echo 'SCICOMP_HOST_ARCH=<archspec-target>' | sudo tee /etc/scicomp/host.conf
+```
+
+The init loader reads `host.conf` first; archspec then supplies its ancestor chain for the overridden target.
+
+### CLI options
+
 ```
 -h, --help              Show help message
 -p, --prefix PATH       Installation prefix (default: $HOME/scicomp)
@@ -81,124 +97,53 @@ Available options:
 --lmod-version VERSION  Lmod version (default: 8.7.59)
 ```
 
-### Using Your New Environment
+### Layout
 
-After installation, you can:
-
-```bash
-# List available modules
-module avail
-
-# Load EasyBuild
-module load EasyBuild
-
-# Get information about EasyBuild
-module help EasyBuild
-
-# Show currently loaded modules
-module list
-
-# Search for specific software
-module spider python
-
-# Install new software with EasyBuild
-eb Python-3.11.3-GCCcore-12.3.0.eb
-```
-
-Installation creates this structure:
 ```
 $PREFIX/
-├── build/          # EasyBuild build directory
-├── modules/all/    # Module files for installed software
-├── software/       # Installed components and software
-└── src/           # Source files and archives
+├── builds/<os>/<ver>/
+│   ├── common/                 # arch-neutral tooling (Lua, Lmod, EasyBuild)
+│   │   ├── software/{Lua,Lmod,EasyBuild}/<ver>/
+│   │   ├── modules/all/        # EasyBuild module lives here
+│   │   └── build/
+│   └── <arch>/                 # auto-created by init.sh on each node
+│       ├── software/
+│       ├── modules/all/
+│       └── build/
+├── src/                        # shared EasyBuild source cache
+├── tools/archspec/             # venv used by init.sh for CPU detection
+└── init.sh                     # generated runtime loader
+```
+
+### Day-to-day usage
+
+```bash
+module avail                                # see modules for this host's arch (+ ancestors + common)
+module load EasyBuild
+eb Python-3.11.3-GCCcore-12.3.0.eb --robot  # installs into ${prefix}/builds/<os>/<ver>/<arch>/
+
+echo $SCICOMP_ACTIVE_ARCH                   # the arch the loader picked for this host
 ```
 
 ## Testing
 
-sci-env includes a comprehensive testing framework to ensure reliable operation across different Linux distributions.
-
-### Why Testing Matters
-
-Our testing approach ensures:
-- Each component works correctly in isolation
-- Components work together as a system
-- Installation succeeds in different environments
-- System configurations are correct
-- Environment variables are properly set
-- Cross-distribution compatibility
-
-### Types of Tests
-
-#### Component Tests
-Test individual parts of the system:
-```bash
-./tests/test_components.sh
-```
-
-These verify:
-- Lua installation and functionality
-- Lmod installation and basic module operations
-- EasyBuild installation and configuration
-- Environment variable setup
-- Component dependencies
-- Distribution-specific adaptations
-
-Example component test output:
-```
-2024-11-25 15:10:23 - Starting component tests...
-✓ Test passed: Lua Installation
-✓ Test passed: Lua Environment
-✓ Test passed: Lmod Installation
-✓ Test passed: Lmod Environment
-...
-```
-
-#### Integration Tests
-Test the complete system working together:
-```bash
-./tests/test_installation.sh
-```
-
-These verify:
-- Full installation process
-- System-wide configuration
-- Component interactions
-- Module system functionality
-- EasyBuild operations
-- Cross-distribution compatibility
-
-### Running Tests with Custom Versions
-
-Tests can be run with specific versions:
-```bash
-# Test with specific versions
-TEST_LUA_VERSION=5.1.4.9 TEST_LMOD_VERSION=8.7.59 ./tests/test_components.sh
-
-# Run integration tests with same versions
-TEST_LUA_VERSION=5.1.4.9 TEST_LMOD_VERSION=8.7.59 ./tests/test_installation.sh
-
-# Run with debug output
-bash -x ./tests/test_components.sh
-```
+> **Note:** the test suite under `tests/` was written against the legacy flat layout and has not yet been ported to the arch-aware layout. Tests will fail until updated. Re-validating end-to-end on a real cluster install is the current recommended verification path.
 
 ## Project Structure
 
 ```
 sci-env/
 ├── scripts/
-│   ├── install.sh                 # Main installer
+│   ├── install.sh                  # Main installer / orchestrator
+│   ├── templates/
+│   │   └── init.sh.in              # Runtime loader template (substituted at install)
 │   └── utils/
-│       ├── helpers.sh            # Common utilities
-│       ├── install_easybuild.sh  # EasyBuild installer
-│       ├── install_lmod.sh       # Lmod installer
-│       └── install_lua.sh        # Lua installer
-└── tests/
-    ├── test_components.sh        # Component tests
-    ├── test_installation.sh      # Integration tests
-    └── utils/
-        ├── test_framework.sh     # Test framework
-        └── test_helpers.sh       # Test utilities
+│       ├── helpers.sh              # Common utilities (incl. OS detection)
+│       ├── install_lua.sh          # Lua installer
+│       ├── install_lmod.sh         # Lmod installer
+│       ├── install_archspec.sh     # archspec venv installer
+│       └── install_easybuild.sh    # EasyBuild bootstrap
+└── tests/                          # Legacy; pending rewrite for arch-aware layout
 ```
 
 ## Troubleshooting
@@ -207,8 +152,11 @@ sci-env/
 
 1. **Module command not found**
    ```bash
-   # Solution: Reload your environment
+   # Per-user install: re-source bashrc
    source ~/.bashrc
+
+   # System install: re-source the profile snippet (or open a new login shell)
+   source /etc/profile.d/scicomp.sh
    ```
 
 2. **Lua compilation fails**
@@ -257,15 +205,16 @@ fi
 ## Component Details
 
 Default stable versions (configurable via command line):
-- Lua: 5.1.4.9 
-- Lmod: 8.7.59 
-- EasyBuild: Latest stable version (automatically selected)
+- Lua: 5.1.4.9
+- Lmod: 8.7.59
+- archspec: Latest from PyPI (installed into `${prefix}/tools/archspec/` venv)
+- EasyBuild: Latest stable release (automatically selected during bootstrap)
 
 Tested Distributions:
 - RHEL and derivatives (RHEL, CentOS, Rocky Linux, AlmaLinux, Fedora)
 - Debian and derivatives (Debian, Ubuntu)
 
-Note: All versions can be overridden during installation using the `--lua-version` and `--lmod-version` flags.
+Note: Lua and Lmod versions can be overridden during installation using the `--lua-version` and `--lmod-version` flags. The Lua/Lmod versions are baked into `init.sh` at install time; if you change them later, re-run the installer to regenerate `init.sh`.
 
 ## License
 

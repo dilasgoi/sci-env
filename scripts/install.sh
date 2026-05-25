@@ -4,146 +4,219 @@
 # Scientific Computing Environment Setup Script
 #
 # Description:
-#   Automated installation and configuration of a scientific computing environment
-#   including Lua, Lmod (Module System), and EasyBuild (Software Build/Installation
-#   Framework). This script sets up a complete environment in the user's home
-#   directory or specified location.
+#   Installs Lua, Lmod, archspec, and EasyBuild into an arch-aware layout
+#   and generates a runtime loader (init.sh) that handles per-host CPU
+#   detection (including a built-in heuristic for Intel Sierra Forest CPUs
+#   that archspec <= 0.2.6 misreads as 'skylake').
 #
-# Components installed:
-#   - Lua 5.1.4.9 (Required for Lmod)
-#   - Lmod 8.7.59 (Module System)
-#   - EasyBuild (Latest version via bootstrap)
+# Resulting layout (under the chosen prefix):
+#   builds/<os>/<ver>/
+#     common/                         arch-neutral tooling
+#       software/{Lua,Lmod,EasyBuild}/<ver>/
+#       modules/all/                  EasyBuild module lives here
+#       build/
+#     <arch>/                         created lazily by init.sh per host
+#       software/  modules/all/  build/
+#   src/                              shared EasyBuild source cache
+#   tools/archspec/                   venv used by init.sh to detect CPU
+#   init.sh                           generated runtime loader
+#
+# Deployment modes:
+#   * Per-user (prefix under $HOME): the installer wires
+#       source <prefix>/init.sh
+#     into ~/.bashrc.
+#   * System-wide (prefix outside $HOME, e.g. /scicomp): the installer leaves
+#     ~/.bashrc alone and prints instructions to deploy init.sh as
+#     /etc/profile.d/scicomp.sh on every node that mounts the prefix.
 #
 # Author: Diego Lasa
-# Date: 2024-11-24
 # License: MIT
 #==============================================================================
 
 set -euo pipefail
 IFS=$'\n\t'
 
-# Source utility functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=utils/helpers.sh
 source "${SCRIPT_DIR}/utils/helpers.sh"
+# shellcheck source=utils/install_lua.sh
 source "${SCRIPT_DIR}/utils/install_lua.sh"
+# shellcheck source=utils/install_lmod.sh
 source "${SCRIPT_DIR}/utils/install_lmod.sh"
+# shellcheck source=utils/install_archspec.sh
+source "${SCRIPT_DIR}/utils/install_archspec.sh"
+# shellcheck source=utils/install_easybuild.sh
 source "${SCRIPT_DIR}/utils/install_easybuild.sh"
 
 #==============================================================================
-# Default Configuration
+# Defaults & argument parsing
 #==============================================================================
 LUA_VERSION="5.1.4.9"
 LMOD_VERSION="8.7.59"
-
-#==============================================================================
-# Parse Command Line Arguments
-#==============================================================================
 INSTALL_PREFIX="$HOME/scicomp"
+
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        -p|--prefix)
-            INSTALL_PREFIX="$2"
-            shift 2
-            ;;
-        --lua-version)
-            LUA_VERSION="$2"
-            shift 2
-            ;;
-        --lmod-version)
-            LMOD_VERSION="$2"
-            shift 2
-            ;;
-        *)
-            log "Unknown option: $1"
-            show_help
-            exit 1
-            ;;
+        -h|--help)         show_help; exit 0 ;;
+        -p|--prefix)       INSTALL_PREFIX="$2"; shift 2 ;;
+        --lua-version)     LUA_VERSION="$2"; shift 2 ;;
+        --lmod-version)    LMOD_VERSION="$2"; shift 2 ;;
+        *) log "Unknown option: $1"; show_help; exit 1 ;;
     esac
 done
 
 #==============================================================================
-# Directory Setup
+# Resolve OS slot
 #==============================================================================
+OS_INFO=$(detect_os_release) || exit 1
+read -r OS_ID OS_MAJOR <<< "${OS_INFO}"
+
+OS_ROOT="${INSTALL_PREFIX}/builds/${OS_ID}/${OS_MAJOR}"
+COMMON_DIR="${OS_ROOT}/common"
 SRC_DIR="${INSTALL_PREFIX}/src"
-SOFTWARE_DIR="${INSTALL_PREFIX}/software"
-BUILD_DIR="${INSTALL_PREFIX}/build"
-MODULES_DIR="${INSTALL_PREFIX}/modules"
 
-# Create directory structure
-for dir in "$SRC_DIR" "$SOFTWARE_DIR" "$BUILD_DIR" "${SRC_DIR}/l/Lua" "${SRC_DIR}/l/Lmod" "$MODULES_DIR/all"; do
-    create_dir "$dir"
-done
+log "Layout:"
+log "  prefix:   ${INSTALL_PREFIX}"
+log "  os slot:  ${OS_ROOT}"
+log "  common:   ${COMMON_DIR}"
 
-#==============================================================================
-# Main Installation Process
-#==============================================================================
-# Install system dependencies
-install_system_dependencies
-
-# Install Lua (pass the version explicitly)
-install_lua "$LUA_VERSION" "$SRC_DIR" "$SOFTWARE_DIR"
-
-# Install and configure Lmod (pass the version explicitly)
-install_lmod "$LMOD_VERSION" "$SRC_DIR" "$SOFTWARE_DIR" "$INSTALL_PREFIX"
-
-# Install and configure EasyBuild (pass both versions)
-install_easybuild "$INSTALL_PREFIX" "$SRC_DIR" "$BUILD_DIR" "$LUA_VERSION" "$LMOD_VERSION"
-
-# Clean up temporary files
-cleanup
-
-#==============================================================================
-# Final Configuration
-#==============================================================================
-log "Setting up final configuration..."
-
-# Set BASHRCSOURCED to prevent unbound variable error
-export BASHRCSOURCED="Y"
-
-# Source bashrc in a subshell to prevent script termination if there are errors
-if (source "$HOME/.bashrc" >/dev/null 2>&1); then
-    log "Successfully sourced .bashrc"
-else
-    log "Warning: Could not source .bashrc completely, but installation is complete"
-    log "You will need to run 'source ~/.bashrc' manually after the script finishes"
+# Warn early if previous-generation .bashrc gunk is around (would shadow the
+# new init.sh exports).
+if grep -qE '^(export +)?EASYBUILD_(PREFIX|INSTALLPATH|MODULES_TOOL|SOURCEPATH|BUILDPATH)=' "${HOME}/.bashrc" 2>/dev/null \
+   || grep -qE '^# EasyBuild configuration' "${HOME}/.bashrc" 2>/dev/null; then
+    log "WARNING: ~/.bashrc contains EASYBUILD_* exports from an older sci-env install."
+    log "         Remove that block manually; otherwise it will fight the new init.sh."
 fi
 
 #==============================================================================
-# Installation Summary
+# Directory skeleton
 #==============================================================================
-cat << EOF
+for dir in \
+    "${SRC_DIR}/l/Lua" \
+    "${SRC_DIR}/l/Lmod" \
+    "${COMMON_DIR}/software" \
+    "${COMMON_DIR}/modules/all" \
+    "${COMMON_DIR}/build" \
+    "${INSTALL_PREFIX}/tools"; do
+    create_dir "${dir}"
+done
 
-Installation Summary:
+#==============================================================================
+# Install pipeline
+#==============================================================================
+install_system_dependencies
+
+install_lua  "${LUA_VERSION}"  "${SRC_DIR}" "${COMMON_DIR}/software"
+install_lmod "${LMOD_VERSION}" "${SRC_DIR}" "${COMMON_DIR}/software"
+
+install_archspec "${INSTALL_PREFIX}"
+
+install_easybuild "${INSTALL_PREFIX}" "${COMMON_DIR}" "${SRC_DIR}" "${LUA_VERSION}" "${LMOD_VERSION}"
+
+cleanup
+
+#==============================================================================
+# Generate the runtime loader
+#==============================================================================
+INIT_TEMPLATE="${SCRIPT_DIR}/templates/init.sh.in"
+INIT_DEST="${INSTALL_PREFIX}/init.sh"
+
+if [ ! -r "${INIT_TEMPLATE}" ]; then
+    log "ERROR: init.sh template not found at ${INIT_TEMPLATE}"
+    exit 1
+fi
+
+log "Generating runtime loader at ${INIT_DEST}..."
+sed -e "s|@SCICOMP_PREFIX@|${INSTALL_PREFIX}|g" \
+    -e "s|@LUA_VERSION@|${LUA_VERSION}|g" \
+    -e "s|@LMOD_VERSION@|${LMOD_VERSION}|g" \
+    "${INIT_TEMPLATE}" > "${INIT_DEST}"
+chmod 0644 "${INIT_DEST}"
+check_status "Generated ${INIT_DEST}"
+
+#==============================================================================
+# Deployment mode
+#==============================================================================
+case "${INSTALL_PREFIX}" in
+    "${HOME}"|"${HOME}"/*)
+        DEPLOY_MODE="user"
+        if ! grep -qF "source ${INIT_DEST}" "${HOME}/.bashrc" 2>/dev/null; then
+            printf '\n# sci-env runtime loader\nsource %s\n' "${INIT_DEST}" >> "${HOME}/.bashrc"
+            check_status "Wired ${INIT_DEST} into ~/.bashrc"
+        fi
+        ;;
+    *)
+        DEPLOY_MODE="system"
+        ;;
+esac
+
+#==============================================================================
+# Smoke test (subshell so we don't pollute the installer's env)
+#==============================================================================
+log "Running smoke test..."
+(
+    set +u
+    # shellcheck disable=SC1090
+    source "${INIT_DEST}"
+    module --version >/dev/null 2>&1
+    module avail 2>&1 | grep -q 'EasyBuild'
+)
+check_status "Smoke test: Lmod + EasyBuild module visible"
+
+#==============================================================================
+# Summary
+#==============================================================================
+cat <<EOF
+
+Installation Summary
 --------------------
-Lua Version: ${LUA_VERSION}
-Lua Path: ${SOFTWARE_DIR}/Lua/${LUA_VERSION}
-Lmod Version: ${LMOD_VERSION}
-Lmod Path: ${SOFTWARE_DIR}/Lmod/${LMOD_VERSION}
-EasyBuild Path: ${INSTALL_PREFIX}
+Prefix:        ${INSTALL_PREFIX}
+OS slot:       ${OS_ROOT}
+Common tree:   ${COMMON_DIR}
+Source cache:  ${SRC_DIR}
+archspec venv: ${INSTALL_PREFIX}/tools/archspec
+Runtime init:  ${INIT_DEST}
+Deploy mode:   ${DEPLOY_MODE}
 
-Module Paths:
-- ${SOFTWARE_DIR}/Lmod/${LMOD_VERSION}/lmod/lmod/modulefiles/Core
-- ${INSTALL_PREFIX}/modules/all
+Lua ${LUA_VERSION}, Lmod ${LMOD_VERSION}, archspec (latest), EasyBuild (latest release).
 
-EasyBuild Configuration:
-- Prefix: ${INSTALL_PREFIX}
-- Modules Tool: Lmod
-- Modules Path: ${INSTALL_PREFIX}/modules
-- Source Path: ${INSTALL_PREFIX}/src
-- Build Path: ${INSTALL_PREFIX}/build
-
-Next steps:
-1. Run 'source ~/.bashrc'
-2. Run 'module av' to verify Lmod installation
-3. Run 'module load EasyBuild' to load EasyBuild
-
-Note: The environment will be fully functional after a new login session or
-      after sourcing ~/.bashrc
 EOF
 
-# Exit successfully
+if [ "${DEPLOY_MODE}" = "user" ]; then
+    cat <<EOF
+Per-user install. The runtime loader is wired into ~/.bashrc.
+Open a new shell or 'source ~/.bashrc', then verify with:
+
+    module avail
+    module load EasyBuild
+    eb --version
+
+EOF
+else
+    cat <<EOF
+System-wide install. Deploy the runtime loader on every node that mounts
+${INSTALL_PREFIX}:
+
+    sudo install -m 0644 ${INIT_DEST} /etc/profile.d/scicomp.sh
+
+The loader auto-detects the host microarchitecture via archspec (with a
+built-in fallback for Intel Sierra Forest, which archspec <= 0.2.6 misreads
+as 'skylake') and routes EASYBUILD_INSTALLPATH/MODULEPATH to the matching
+slot. Compiler optimization flags (-march/-mtune) stay EasyBuild's
+responsibility; override per build with 'eb --optarch=...' if needed.
+
+Optional per-host override (only when both autodetection and the built-in
+heuristic land on the wrong target):
+
+    sudo install -d /etc/scicomp
+    echo 'SCICOMP_HOST_ARCH=<archspec-target>' | sudo tee /etc/scicomp/host.conf
+
+After deploying, on each node:
+
+    module avail
+    echo \$SCICOMP_ACTIVE_ARCH
+
+EOF
+fi
+
 exit 0
