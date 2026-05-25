@@ -32,9 +32,11 @@ detect_os() {
     fi
 }
 
-# Resolve OS identity for the arch-aware layout. Prints "<id> <major>" from
-# /etc/os-release (e.g. "rocky 9", "ubuntu 24"). Returns non-zero if it
-# cannot determine either field; callers should propagate the failure.
+# Resolve OS identity for the arch-aware layout. Prints "<id>\t<major>" from
+# /etc/os-release (e.g. "rocky\t9", "ubuntu\t24"). Tab-separated so callers
+# using `read` with strict IFS=$'\n\t' still split correctly. Returns
+# non-zero if it cannot determine either field; callers should propagate
+# the failure.
 detect_os_release() {
     if [ ! -r /etc/os-release ]; then
         log "ERROR: /etc/os-release not readable"
@@ -56,7 +58,7 @@ detect_os_release() {
         log "ERROR: could not parse ID/VERSION_ID from /etc/os-release"
         return 1
     fi
-    printf '%s %s\n' "${id}" "${ver}"
+    printf '%s\t%s\n' "${id}" "${ver}"
 }
 
 create_dir() {
