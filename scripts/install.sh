@@ -146,6 +146,13 @@ sed -e "s|@SCICOMP_PREFIX@|${INSTALL_PREFIX}|g" \
 chmod 0644 "${INIT_DEST}"
 check_status "Generated ${INIT_DEST}"
 
+# Copy validate.sh into tools/ so any node mounting the prefix can run it
+# without cloning the repo.
+VALIDATE_SRC="${SCRIPT_DIR}/validate.sh"
+VALIDATE_DEST="${INSTALL_PREFIX}/tools/validate.sh"
+install -m 0755 "${VALIDATE_SRC}" "${VALIDATE_DEST}"
+check_status "Installed ${VALIDATE_DEST}"
+
 #==============================================================================
 # Per-user mode: wire the loader into ~/.bashrc (system mode does nothing
 # here; admin is responsible for copying init.sh to /etc/profile.d/).
@@ -158,17 +165,18 @@ if [ "${DEPLOY_MODE}" = "user" ]; then
 fi
 
 #==============================================================================
-# Smoke test (subshell so we don't pollute the installer's env)
+# Smoke test: source the just-generated init.sh in a subshell, then defer
+# to validate.sh (the same script admins run on each node post-deploy).
+# Subshell isolation keeps the installer's env unchanged.
 #==============================================================================
-log "Running smoke test..."
+log "Running smoke test (delegates to ${VALIDATE_DEST})..."
 (
     set +u
     # shellcheck disable=SC1090
     source "${INIT_DEST}"
-    module --version >/dev/null 2>&1
-    module avail 2>&1 | grep -q 'EasyBuild'
+    "${VALIDATE_DEST}"
 )
-check_status "Smoke test: Lmod + EasyBuild module visible"
+check_status "Smoke test"
 
 #==============================================================================
 # Summary
@@ -197,6 +205,7 @@ Open a new shell or 'source ~/.bashrc', then verify with:
     module avail
     module load EasyBuild
     eb --version
+    ${INSTALL_PREFIX}/tools/validate.sh   # health check
 
 EOF
 else
@@ -216,6 +225,7 @@ After deploying, on each node:
 
     module avail
     echo \$SCICOMP_ACTIVE_ARCH
+    ${INSTALL_PREFIX}/tools/validate.sh   # health check
 
 EOF
 fi

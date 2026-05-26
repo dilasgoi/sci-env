@@ -100,7 +100,9 @@ $PREFIX/
 │       ├── modules/all/
 │       └── build/
 ├── src/                        # shared EasyBuild source cache
-├── tools/archspec/             # venv used by init.sh for CPU detection
+├── tools/
+│   ├── archspec/               # venv used by init.sh for CPU detection
+│   └── validate.sh             # post-deploy health check
 └── init.sh                     # generated runtime loader
 ```
 
@@ -116,7 +118,14 @@ echo $SCICOMP_ACTIVE_ARCH                   # the arch the loader picked for thi
 
 ## Validation
 
-Verification is end-to-end on a real install: run `./scripts/install.sh -p /tmp/scicomp-test` on a fresh box, confirm the smoke test at the end passes, and run `module avail` / `module load EasyBuild` / `eb --version` to sanity-check.
+A standalone health-check script lives at `${prefix}/tools/validate.sh` (copied there by the installer). It asserts: loader env vars are exported, the host arch slot directory exists, `EASYBUILD_INSTALLPATH` matches that slot, the archspec venv works, the `module` command is available, and the `EasyBuild` module is visible.
+
+- `install.sh` runs it automatically at the end of an install (as the smoke test); install fails if any check fails.
+- On any node mounting the prefix, after deploying `init.sh` to `/etc/profile.d/scicomp.sh`, log in and run:
+  ```bash
+  /scicomp/tools/validate.sh
+  ```
+  Exit 0 means the node is healthy. Any failed check prints to stderr and exits non-zero.
 
 ## Project Structure
 
@@ -124,6 +133,7 @@ Verification is end-to-end on a real install: run `./scripts/install.sh -p /tmp/
 sci-env/
 ├── scripts/
 │   ├── install.sh                  # Main installer / orchestrator
+│   ├── validate.sh                 # Post-deploy health check (copied to ${prefix}/tools/)
 │   ├── templates/
 │   │   └── init.sh.in              # Runtime loader template (substituted at install)
 │   └── utils/

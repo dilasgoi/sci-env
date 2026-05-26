@@ -29,8 +29,10 @@
 # build, pass `eb --optarch=...` at invocation time.
 #==============================================================================
 
-# Baked-in at install time
-SCICOMP_PREFIX="@SCICOMP_PREFIX@"
+# Baked-in at install time. SCICOMP_PREFIX is exported so child processes
+# (e.g. validate.sh launched from a login shell) can locate the install.
+# The version vars are internal and stay as shell-locals.
+export SCICOMP_PREFIX="@SCICOMP_PREFIX@"
 SCICOMP_LUA_VERSION="@LUA_VERSION@"
 SCICOMP_LMOD_VERSION="@LMOD_VERSION@"
 
