@@ -11,12 +11,11 @@
 # At every login this script:
 #   1. Detects OS family + major from /etc/os-release.
 #   2. Resolves the host microarchitecture:
-#        a) Optional override from /etc/scicomp/host.conf (SCICOMP_HOST_ARCH=...).
-#        b) Built-in heuristics for CPUs archspec doesn't recognise yet
+#        a) Built-in heuristics for CPUs archspec doesn't recognise yet
 #           (currently: Intel Sierra Forest, which archspec <= 0.2.6 misreads
 #           as 'skylake' because it has no AVX-512).
-#        c) archspec auto-detection (preferred path for known CPUs).
-#        d) uname -m fallback.
+#        b) archspec auto-detection (preferred path for known CPUs).
+#        c) uname -m fallback.
 #   3. Auto-creates the host's <arch>/ slot directory if missing (idempotent;
 #      silent on read-only mounts).
 #   4. Composes MODULEPATH as: <host_arch>/modules/all : <compatible ancestor
@@ -28,12 +27,6 @@
 # NOT set compiler optimization flags. EasyBuild handles -march/-mtune via
 # its own archspec integration. If you want to override flags for a specific
 # build, pass `eb --optarch=...` at invocation time.
-#
-# Optional per-host override
-#   /etc/scicomp/host.conf
-#       SCICOMP_HOST_ARCH=<archspec-target-name>
-#   Use when archspec autodetection picks the wrong target on a node AND the
-#   built-in heuristics don't catch it.
 #==============================================================================
 
 # Baked-in at install time
@@ -76,37 +69,8 @@ _scicomp_is_sierraforest_cpu() {
 # Print arch candidates: host first, then ancestors (compatibility chain).
 _scicomp_arch_candidates() {
     local py="${SCICOMP_PREFIX}/tools/archspec/bin/python"
-    local override=""
 
-    if [ -r /etc/scicomp/host.conf ]; then
-        # shellcheck disable=SC1091
-        . /etc/scicomp/host.conf
-        override="${SCICOMP_HOST_ARCH:-}"
-    fi
-
-    # 1. Manual override via host.conf is authoritative. We try to expand it
-    #    through archspec to get the ancestor chain; if that fails (venv
-    #    missing, or archspec doesn't know the target), fall back to the
-    #    bare override name so host_arch is still correct, just without an
-    #    ancestor list.
-    if [ -n "${override}" ]; then
-        if [ -x "${py}" ]; then
-            "${py}" -c "
-import archspec.cpu as c, sys
-name = '${override}'
-if name not in c.TARGETS:
-    sys.exit(1)
-t = c.TARGETS[name]
-print(t.name)
-for a in t.ancestors:
-    print(a.name)
-" 2>/dev/null && return
-        fi
-        echo "${override}"
-        return
-    fi
-
-    # 2. Sierra Forest fingerprint (archspec <= 0.2.6 misreads as skylake).
+    # 1. Sierra Forest fingerprint (archspec <= 0.2.6 misreads as skylake).
     if _scicomp_is_sierraforest_cpu; then
         cat <<'EOF'
 sierraforest
@@ -124,7 +88,7 @@ EOF
         return
     fi
 
-    # 3. archspec auto-detection (preferred path for known CPUs).
+    # 2. archspec auto-detection (preferred path for known CPUs).
     if [ -x "${py}" ]; then
         "${py}" -c "import archspec.cpu as c
 h = c.host()
@@ -133,12 +97,12 @@ for a in h.ancestors:
     print(a.name)" 2>/dev/null && return
     fi
 
-    # 4. archspec from PATH (single line, no ancestors).
+    # 3. archspec from PATH (single line, no ancestors).
     if command -v archspec >/dev/null 2>&1; then
         archspec cpu 2>/dev/null && return
     fi
 
-    # 5. Last-resort fallback.
+    # 4. Last-resort fallback.
     uname -m
 }
 

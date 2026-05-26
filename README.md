@@ -77,17 +77,6 @@ At each login on each node, `init.sh`:
 
 The loader only handles routing. Compiler optimization flags (`-march`/`-mtune`) stay EasyBuild's responsibility. Override per build with `eb --optarch=...` if you need to.
 
-### Optional per-host CPU override
-
-When archspec misdetects a CPU AND the built-in Sierra Forest heuristic doesn't catch it, force a target on that specific node:
-
-```bash
-sudo install -d /etc/scicomp
-echo 'SCICOMP_HOST_ARCH=<archspec-target>' | sudo tee /etc/scicomp/host.conf
-```
-
-The init loader reads `host.conf` first; archspec then supplies its ancestor chain for the overridden target.
-
 ### CLI options
 
 ```

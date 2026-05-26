@@ -205,12 +205,6 @@ as 'skylake') and routes EASYBUILD_INSTALLPATH/MODULEPATH to the matching
 slot. Compiler optimization flags (-march/-mtune) stay EasyBuild's
 responsibility; override per build with 'eb --optarch=...' if needed.
 
-Optional per-host override (only when both autodetection and the built-in
-heuristic land on the wrong target):
-
-    sudo install -d /etc/scicomp
-    echo 'SCICOMP_HOST_ARCH=<archspec-target>' | sudo tee /etc/scicomp/host.conf
-
 After deploying, on each node:
 
     module avail
