@@ -81,10 +81,14 @@ fi
 printf '\n[4/4] Lmod + EasyBuild\n'
 if command -v module >/dev/null 2>&1; then
     pass "module command available"
-    if module avail 2>&1 | grep -q 'EasyBuild'; then
-        pass "EasyBuild module visible in MODULEPATH"
+    # `--show-hidden` so a deployment that hides the EasyBuild module
+    # (typical: rename to .X.Y.Z.lua so end users don't see it in
+    # `module avail`) still passes this check, since the module is still
+    # loadable and that's what we're verifying.
+    if module --show-hidden avail 2>&1 | grep -q 'EasyBuild'; then
+        pass "EasyBuild module reachable in MODULEPATH"
     else
-        fail "EasyBuild module not visible (check common/ slot is populated)"
+        fail "EasyBuild module not reachable (check common/ slot is populated)"
     fi
 else
     fail "module command not available (Lmod init/profile not sourced)"
