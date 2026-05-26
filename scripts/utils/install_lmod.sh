@@ -19,6 +19,6 @@ install_lmod() {
     tar -zxf "${lmod_version}.tar.gz"
     cd "Lmod-${lmod_version}"
     ./configure --prefix="${software_dir}/Lmod/${lmod_version}"
-    make install
+    make -j"$(nproc)" install
     check_status "Installing Lmod"
 }

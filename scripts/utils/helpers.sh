@@ -68,17 +68,6 @@ create_dir() {
     fi
 }
 
-cleanup() {
-    log "Cleaning up temporary files..."
-    OS_TYPE=$(detect_os)
-    if [ "$OS_TYPE" = "rhel" ]; then
-        rm -rf "/tmp/eb_tmp"
-    elif [ "$OS_TYPE" = "debian" ]; then
-        rm -rf "/tmp/pip-*"  # Ubuntu/Debian pip temp files
-    fi
-    check_status "Cleanup complete"
-}
-
 show_help() {
     cat << EOF
 Usage: $(basename "$0") [OPTIONS]

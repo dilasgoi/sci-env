@@ -18,11 +18,12 @@ install_lua() {
     tar -xf "lua-${lua_version}.tar"
     cd "lua-${lua_version}"
 
-    # Add missing header include
-    sed -i '1i#include <string.h>' loadsys/unx_sys.c
+    # Add missing header include (skip if already present, e.g. on re-run)
+    grep -q '^#include <string.h>' loadsys/unx_sys.c \
+        || sed -i '1i#include <string.h>' loadsys/unx_sys.c
 
     ./configure --prefix="${software_dir}/Lua/${lua_version}"
-    make
+    make -j"$(nproc)"
     make install
     check_status "Installing Lua"
 

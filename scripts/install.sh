@@ -75,15 +75,29 @@ OS_ROOT="${INSTALL_PREFIX}/builds/${OS_ID}/${OS_MAJOR}"
 COMMON_DIR="${OS_ROOT}/common"
 SRC_DIR="${INSTALL_PREFIX}/src"
 
+# Decide deploy mode early so downstream steps can gate on it. Prefix under
+# $HOME is treated as a per-user install (we'll wire ~/.bashrc later);
+# anything else is a system install (admin will copy init.sh to
+# /etc/profile.d/ themselves).
+case "${INSTALL_PREFIX}" in
+    "${HOME}"|"${HOME}"/*) DEPLOY_MODE="user" ;;
+    *)                     DEPLOY_MODE="system" ;;
+esac
+
 log "Layout:"
 log "  prefix:   ${INSTALL_PREFIX}"
 log "  os slot:  ${OS_ROOT}"
 log "  common:   ${COMMON_DIR}"
+log "  mode:     ${DEPLOY_MODE}"
 
 # Warn early if previous-generation .bashrc gunk is around (would shadow the
-# new init.sh exports).
-if grep -qE '^(export +)?EASYBUILD_(PREFIX|INSTALLPATH|MODULES_TOOL|SOURCEPATH|BUILDPATH)=' "${HOME}/.bashrc" 2>/dev/null \
-   || grep -qE '^# EasyBuild configuration' "${HOME}/.bashrc" 2>/dev/null; then
+# new init.sh exports). Only relevant for per-user installs; in system mode
+# $HOME is whoever ran sudo (often /root) and that file isn't what loads on
+# user logins anyway.
+if [ "${DEPLOY_MODE}" = "user" ] && {
+    grep -qE '^(export +)?EASYBUILD_(PREFIX|INSTALLPATH|MODULES_TOOL|SOURCEPATH|BUILDPATH)=' "${HOME}/.bashrc" 2>/dev/null \
+    || grep -qE '^# EasyBuild configuration' "${HOME}/.bashrc" 2>/dev/null
+}; then
     log "WARNING: ~/.bashrc contains EASYBUILD_* exports from an older sci-env install."
     log "         Remove that block manually; otherwise it will fight the new init.sh."
 fi
@@ -113,8 +127,6 @@ install_archspec "${INSTALL_PREFIX}"
 
 install_easybuild "${INSTALL_PREFIX}" "${COMMON_DIR}" "${SRC_DIR}" "${LUA_VERSION}" "${LMOD_VERSION}"
 
-cleanup
-
 #==============================================================================
 # Generate the runtime loader
 #==============================================================================
@@ -135,20 +147,15 @@ chmod 0644 "${INIT_DEST}"
 check_status "Generated ${INIT_DEST}"
 
 #==============================================================================
-# Deployment mode
+# Per-user mode: wire the loader into ~/.bashrc (system mode does nothing
+# here; admin is responsible for copying init.sh to /etc/profile.d/).
 #==============================================================================
-case "${INSTALL_PREFIX}" in
-    "${HOME}"|"${HOME}"/*)
-        DEPLOY_MODE="user"
-        if ! grep -qF "source ${INIT_DEST}" "${HOME}/.bashrc" 2>/dev/null; then
-            printf '\n# sci-env runtime loader\nsource %s\n' "${INIT_DEST}" >> "${HOME}/.bashrc"
-            check_status "Wired ${INIT_DEST} into ~/.bashrc"
-        fi
-        ;;
-    *)
-        DEPLOY_MODE="system"
-        ;;
-esac
+if [ "${DEPLOY_MODE}" = "user" ]; then
+    if ! grep -qF "source ${INIT_DEST}" "${HOME}/.bashrc" 2>/dev/null; then
+        printf '\n# sci-env runtime loader\nsource %s\n' "${INIT_DEST}" >> "${HOME}/.bashrc"
+        check_status "Wired ${INIT_DEST} into ~/.bashrc"
+    fi
+fi
 
 #==============================================================================
 # Smoke test (subshell so we don't pollute the installer's env)
