@@ -114,9 +114,9 @@ eb Python-3.11.3-GCCcore-12.3.0.eb --robot  # installs into ${prefix}/builds/<os
 echo $SCICOMP_ACTIVE_ARCH                   # the arch the loader picked for this host
 ```
 
-## Testing
+## Validation
 
-> **Note:** the test suite under `tests/` was written against the legacy flat layout and has not yet been ported to the arch-aware layout. Tests will fail until updated. Re-validating end-to-end on a real cluster install is the current recommended verification path.
+Verification is end-to-end on a real install: run `./scripts/install.sh -p /tmp/scicomp-test` on a fresh box, confirm the smoke test at the end passes, and run `module avail` / `module load EasyBuild` / `eb --version` to sanity-check.
 
 ## Project Structure
 
@@ -132,7 +132,6 @@ sci-env/
 │       ├── install_lmod.sh         # Lmod installer
 │       ├── install_archspec.sh     # archspec venv installer
 │       └── install_easybuild.sh    # EasyBuild bootstrap
-└── tests/                          # Legacy; pending rewrite for arch-aware layout
 ```
 
 ## Troubleshooting
