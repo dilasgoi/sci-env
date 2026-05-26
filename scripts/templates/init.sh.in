@@ -142,6 +142,13 @@ _scicomp_init() {
     fi
 
     # MODULEPATH: host slot first, then existing ancestor slots, then common.
+    # We intentionally do NOT inherit any pre-existing MODULEPATH. Lmod's
+    # init/profile (sourced above) adds its own meta-modulefiles dir to
+    # MODULEPATH (containing `lmod` and `settarg`, internal modules useless
+    # to end users); some distros also pre-populate it with
+    # /usr/share/Modules/modulefiles (dot, module-git, null, etc., from the
+    # legacy environment-modules package). Overwriting instead of appending
+    # keeps `module avail` strictly limited to sci-env-managed slots.
     local slot_paths="" arch
     for arch in ${candidates}; do
         if [ -d "${os_root}/${arch}/modules/all" ]; then
@@ -149,7 +156,10 @@ _scicomp_init() {
         fi
     done
     local mp="${slot_paths}${slot_paths:+:}${common_dir}/modules/all"
-    export MODULEPATH="${mp}${MODULEPATH:+:${MODULEPATH}}"
+    # Previous behaviour, kept commented for reference: appended any
+    # pre-existing MODULEPATH (Lmod Core + system) after our paths.
+    # export MODULEPATH="${mp}${MODULEPATH:+:${MODULEPATH}}"
+    export MODULEPATH="${mp}"
 
     # EasyBuild: routing only (where to read/write). Optimization flags
     # (-march/-mtune) are EB's responsibility via its own archspec.
